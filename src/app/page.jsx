@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "next-themes";
 import {
   Plus,
@@ -42,29 +42,7 @@ const App = () => {
   // State for streaming response
   const [streamingResponse, setStreamingResponse] = useState("");
 
-  // Cache for common responses
-  const [responseCache, setResponseCache] = useState({});
-
-  // Predefined responses for common questions
-  const predefinedResponses = {
-    experience:
-      "I'm a passionate software developer with extensive experience in full-stack development, AI/ML, and cloud technologies. I specialize in building scalable web applications using modern frameworks like React, Node.js, and Python. I've worked on various projects ranging from e-commerce platforms to AI-powered applications. You can find more details about my professional journey on my LinkedIn profile in the sidebar.",
-
-    education:
-      "I have a strong educational background in Computer Science with a focus on software engineering and artificial intelligence. I'm proficient in multiple programming languages including JavaScript, Python, Java, and C++. I've also completed various certifications in cloud computing and machine learning. My GitHub repositories showcase my technical skills and project work - feel free to explore them!",
-
-    about:
-      "I'm a dedicated software developer who loves creating innovative technology solutions. I'm passionate about solving complex problems and building applications that make a real difference. I enjoy working with cutting-edge technologies and am always eager to learn new skills. When I'm not coding, I love contributing to open-source projects and sharing knowledge with the developer community.",
-
-    projects:
-      "I've worked on numerous exciting projects throughout my career! From full-stack web applications to AI/ML models, I love building solutions that solve real-world problems. Some of my notable projects include e-commerce platforms, data visualization tools, and machine learning applications. Check out my GitHub profile in the sidebar to explore my repositories and see detailed project documentation.",
-
-    skills:
-      "My technical skills span across multiple domains: Frontend (React, Vue.js, HTML/CSS, JavaScript/TypeScript), Backend (Node.js, Python, Java, Express.js), Databases (PostgreSQL, MongoDB, Redis), Cloud (AWS, Google Cloud, Docker), and AI/ML (TensorFlow, PyTorch, scikit-learn). I'm also experienced with DevOps practices, version control, and agile development methodologies.",
-
-    contact:
-      "I'd love to connect with you! You can reach me through the contact information in the sidebar. Feel free to check out my LinkedIn for professional networking, or explore my GitHub to see my latest work. I'm always open to discussing new opportunities, collaborations, or just having a chat about technology!",
-  };
+  // State for showing quick suggestions
 
   // Ref for the end of the messages list to enable auto-scrolling
   const messagesEndRef = useRef(null);
@@ -101,28 +79,6 @@ const App = () => {
     return content;
   };
 
-  // Function to check for cached or predefined responses
-  const getCachedResponse = (input, isButtonClick = false) => {
-    const lowerInput = input.toLowerCase();
-
-    // Only check predefined responses for button clicks
-    if (isButtonClick) {
-      // Check for exact matches in predefined responses
-      for (const [key, response] of Object.entries(predefinedResponses)) {
-        if (lowerInput.includes(key)) {
-          return response;
-        }
-      }
-    }
-
-    // Check cache for exact matches only (not partial word matches)
-    const cacheKey = lowerInput.replace(/[^\w\s]/g, "").trim();
-    if (responseCache[cacheKey]) {
-      return responseCache[cacheKey];
-    }
-
-    return null;
-  };
 
   // Function to handle sending a message with streaming
   const handleSendMessage = async () => {
@@ -140,23 +96,12 @@ const App = () => {
     setIsTyping(true);
     setStreamingResponse("");
 
-    // Check for cached response only (no predefined responses for manual input)
-    const cachedResponse = getCachedResponse(currentInput, false);
-    if (cachedResponse) {
-      // Simulate typing delay for better UX
-      setTimeout(() => {
-        const botResponse = {
-          id: Date.now() + 1,
-          text: cachedResponse,
-          sender: "bot",
-        };
-        setMessages((prevMessages) => [...prevMessages, botResponse]);
-        setIsTyping(false);
-      }, 1000);
-      return;
+    // Show quick suggestions after first message (entering chat mode)
+    if (messages.length === 0) {
+      setShowQuickSuggestions(true);
     }
 
-    // Use the shared API call function
+    // Always use the API call function - no caching
     handleApiCall(currentInput);
   };
 
@@ -166,6 +111,12 @@ const App = () => {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  // Handle input change to show suggestions when user starts typing
+  const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+    // Show suggestions when user starts typing in chat mode (if they were hidden)
   };
 
   const handlePromptClick = (promptText) => {
@@ -180,23 +131,7 @@ const App = () => {
     setIsTyping(true);
     setStreamingResponse("");
 
-    // Check for cached/predefined response first (button click)
-    const cachedResponse = getCachedResponse(promptText, true);
-    if (cachedResponse) {
-      // Simulate typing delay for better UX
-      setTimeout(() => {
-        const botResponse = {
-          id: Date.now() + 1,
-          text: cachedResponse,
-          sender: "bot",
-        };
-        setMessages((prevMessages) => [...prevMessages, botResponse]);
-        setIsTyping(false);
-      }, 1000);
-      return;
-    }
-
-    // If no cached response, make API call
+    // Always make API call - no caching
     handleApiCall(promptText);
   };
 
@@ -296,16 +231,6 @@ const App = () => {
 
       setMessages((prevMessages) => [...prevMessages, botResponse]);
       setStreamingResponse("");
-
-      // Cache the response for future use
-      const cacheKey = messageText
-        .toLowerCase()
-        .replace(/[^\w\s]/g, "")
-        .trim();
-      setResponseCache((prev) => ({
-        ...prev,
-        [cacheKey]: fullResponse,
-      }));
     } catch (error) {
       console.error("Error:", error);
 
@@ -375,6 +300,43 @@ const App = () => {
     setInputValue("");
   };
 
+  // Animated Scrollable Options Row - memoized to prevent re-renders
+  const AnimatedOptionsRow = useCallback(() => {
+    // Only show in chat mode when there are messages and on client side
+    if (messages.length === 0 || typeof window === 'undefined') return null;
+
+    const options = [
+      { text: "Tell me about your experience", label: "Experience", icon: <Briefcase size={14} /> },
+      { text: "What's your educational background?", label: "Education", icon: <FileText size={14} /> },
+      { text: "Tell me about yourself", label: "About Me", icon: <User size={14} /> },
+      { text: "What projects have you worked on?", label: "Projects", icon: <Github size={14} /> },
+      { text: "What are your technical skills?", label: "Skills", icon: <Briefcase size={14} /> },
+      { text: "How can I contact you?", label: "Contact", icon: <Mail size={14} /> },
+      { text: "What's your work experience?", label: "Work History", icon: <Briefcase size={14} /> },
+      { text: "Tell me about your achievements", label: "Achievements", icon: <Briefcase size={14} /> }
+    ];
+
+    return (
+      <div className="animation-container mb-3" suppressHydrationWarning>
+        <div className="animate-scroll-left">
+          <div className="flex gap-3 px-4 py-2">
+            {[...options, ...options].map((option, index) => (
+              <button
+                key={index}
+                onClick={() => handlePromptClick(option.text)}
+                className="flex items-center gap-2 px-4 py-2 bg-bg-secondary hover:bg-bg-tertiary border border-border-light rounded-full text-sm text-text-primary transition-all duration-200 hover:scale-105 hover:shadow-sm whitespace-nowrap flex-shrink-0"
+              >
+                {option.icon}
+                <span>{option.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }, [messages.length, handlePromptClick]);
+
+
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
   };
@@ -434,7 +396,7 @@ const App = () => {
           </a>
 
           <a
-            href="https://linkedin.com/in/shashankhv"
+            href="https://linkedin.com/in/shashank-halanur"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group"
@@ -738,10 +700,10 @@ const App = () => {
   }
 
   return (
-    <div className="flex h-screen bg-bg-primary font-sans">
+    <div className="flex h-screen bg-bg-primary font-sans" suppressHydrationWarning>
       <Sidebar />
 
-      <div className="flex flex-col flex-1 relative">
+      <div className="flex flex-col flex-1 relative max-w-full overflow-hidden">
         {/* Header */}
         <header className="bg-bg-primary md:hidden flex items-center justify-between p-4 border-b border-border-light z-10">
           <button
@@ -765,7 +727,7 @@ const App = () => {
         </header>
 
         {/* Main Chat Window */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto max-w-full">
           {messages.length === 0 ? (
             <InitialScreen />
           ) : (
@@ -782,26 +744,28 @@ const App = () => {
         {/* Chat Input Area */}
         <footer className="bg-bg-primary p-4 md:p-6 border-t border-border-light">
           <div className="max-w-4xl mx-auto">
+            {/* Animated Options Row for chat mode - constrained to text area width */}
+            <AnimatedOptionsRow />
             <div className="relative bg-input-bg border border-input-border rounded-2xl focus-within:border-input-focus transition-colors">
               <div className="flex items-end p-3">
-                <textarea
+              <textarea
                   ref={textareaRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  rows="1"
-                  placeholder="Message Shashank GPT..."
+                value={inputValue}
+                  onChange={handleInputChange}
+                onKeyPress={handleKeyPress}
+                rows="1"
+                placeholder="Message Shashank GPT..."
                   className="flex-1 bg-transparent text-text-primary resize-none focus:outline-none min-h-[24px] max-h-[120px] pr-3"
                   style={{ lineHeight: "16px" }}
-                />
+              />
                 <div className="flex-shrink-0">
-                  <button
-                    onClick={handleSendMessage}
+              <button
+                onClick={handleSendMessage}
                     disabled={!inputValue.trim() || isTyping}
                     className="w-8 h-8 rounded-lg bg-accent-green hover:bg-accent-green-hover disabled:bg-text-tertiary disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-                  >
+              >
                     <Send size={16} className="text-white" />
-                  </button>
+              </button>
                 </div>
               </div>
             </div>

@@ -175,3 +175,31 @@ body {
   background-color: var(--accent-green);
   color: white;
 }
+
+/* Animated scrolling options */
+@keyframes scrollLeft {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-left {
+  animation: scrollLeft 20s linear infinite;
+  width: 200%;
+  max-width: 100vw; /* Constrain to viewport width */
+}
+
+.animate-scroll-left:hover {
+  animation-play-state: paused;
+}
+
+/* Ensure the animation container doesn't affect other elements */
+.animation-container {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  position: relative;
+}
