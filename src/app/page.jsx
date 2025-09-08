@@ -1,6 +1,13 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "next-themes";
+import dynamic from 'next/dynamic';
+
+// Dynamically import PDFViewer to avoid SSR issues
+const PDFViewer = dynamic(() => import('./components/PDFViewer'), {
+  ssr: false,
+  loading: () => <div>Loading PDF viewer...</div>
+});
 import {
   Plus,
   MessageSquare,
@@ -20,7 +27,9 @@ import {
   ExternalLink,
   Copy,
   Check,
+  Download,
 } from "lucide-react";
+
 
 // Main App Component
 const App = () => {
@@ -43,6 +52,9 @@ const App = () => {
   const [streamingResponse, setStreamingResponse] = useState("");
 
   // State for showing quick suggestions
+
+  // State for resume modal
+  const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
 
   // Ref for the end of the messages list to enable auto-scrolling
   const messagesEndRef = useRef(null);
@@ -119,7 +131,7 @@ const App = () => {
     // Show suggestions when user starts typing in chat mode (if they were hidden)
   };
 
-  const handlePromptClick = (promptText) => {
+  const handlePromptClick = useCallback((promptText) => {
     // Automatically send the predefined query
     const userMessage = {
       id: Date.now(),
@@ -133,7 +145,7 @@ const App = () => {
 
     // Always make API call - no caching
     handleApiCall(promptText);
-  };
+  }, []);
 
   // Extract API call logic into separate function
   const handleApiCall = async (messageText) => {
@@ -180,17 +192,23 @@ const App = () => {
         throw new Error(`Server error: ${errorData.error || response.status}`);
       }
 
-      // Handle streaming response - simplified approach
+      // Handle streaming response with better text processing
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullResponse = "";
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // Decode and add to buffer
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        buffer += chunk;
+        
+        // Process complete lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
 
         for (const line of lines) {
           if (line.trim() && line.startsWith("data: ")) {
@@ -204,7 +222,7 @@ const App = () => {
             try {
               const data = JSON.parse(dataContent);
               
-              // Simple extraction like the Python example
+              // Extract content from the response
               if (data.choices && data.choices.length > 0) {
                 const content = data.choices[0].delta?.content || '';
                 if (content) {
@@ -214,6 +232,7 @@ const App = () => {
               }
             } catch (e) {
               // Skip malformed JSON
+              console.warn('Skipping malformed JSON:', dataContent);
               continue;
             }
           }
@@ -300,7 +319,7 @@ const App = () => {
     setInputValue("");
   };
 
-  // Animated Scrollable Options Row - memoized to prevent re-renders
+  // Animated Scrollable Options Row - completely isolated component
   const AnimatedOptionsRow = useCallback(() => {
     // Only show in chat mode when there are messages and on client side
     if (messages.length === 0 || typeof window === 'undefined') return null;
@@ -309,11 +328,11 @@ const App = () => {
       { text: "Tell me about your experience", label: "Experience", icon: <Briefcase size={14} /> },
       { text: "What's your educational background?", label: "Education", icon: <FileText size={14} /> },
       { text: "Tell me about yourself", label: "About Me", icon: <User size={14} /> },
-      { text: "What projects have you worked on?", label: "Projects", icon: <Github size={14} /> },
       { text: "What are your technical skills?", label: "Skills", icon: <Briefcase size={14} /> },
       { text: "How can I contact you?", label: "Contact", icon: <Mail size={14} /> },
       { text: "What's your work experience?", label: "Work History", icon: <Briefcase size={14} /> },
-      { text: "Tell me about your achievements", label: "Achievements", icon: <Briefcase size={14} /> }
+      { text: "Tell me about your achievements", label: "Achievements", icon: <Briefcase size={14} /> },
+      { text: "What's your GitHub profile?", label: "GitHub", icon: <Github size={14} /> }
     ];
 
     return (
@@ -324,7 +343,7 @@ const App = () => {
               <button
                 key={index}
                 onClick={() => handlePromptClick(option.text)}
-                className="flex items-center gap-2 px-4 py-2 bg-bg-secondary hover:bg-bg-tertiary border border-border-light rounded-full text-sm text-text-primary transition-all duration-200 hover:scale-105 hover:shadow-sm whitespace-nowrap flex-shrink-0"
+                className="flex items-center gap-2 px-4 py-2 bg-bg-secondary hover:bg-bg-tertiary border border-border-light rounded-full text-sm text-text-primary transition-all duration-200 hover:scale-105 hover:shadow-sm whitespace-nowrap flex-shrink-0 cursor-pointer"
               >
                 {option.icon}
                 <span>{option.label}</span>
@@ -334,8 +353,17 @@ const App = () => {
         </div>
       </div>
     );
-  }, [messages.length, handlePromptClick]);
+  }, [messages.length, handlePromptClick]); // Now handlePromptClick is stable
 
+  // Handle resume download
+  const handleResumeDownload = () => {
+    const link = document.createElement('a');
+    link.href = '/resume.pdf';
+    link.download = 'Shashank_Halanur_Resume.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
@@ -370,7 +398,7 @@ const App = () => {
       <div className="flex-1 p-2">
         <button
           onClick={handleNewChat}
-          className="w-full flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors mb-4 border border-sidebar-border"
+          className="w-full flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors mb-4 border border-sidebar-border cursor-pointer"
         >
           <Plus size={18} /> New chat
         </button>
@@ -385,7 +413,7 @@ const App = () => {
             href="https://github.com/shashankhv"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group"
+            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group cursor-pointer"
           >
             <Github size={18} />
             <span>GitHub</span>
@@ -399,7 +427,7 @@ const App = () => {
             href="https://linkedin.com/in/shashank-halanur"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group"
+            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group cursor-pointer"
           >
             <Linkedin size={18} />
             <span>LinkedIn</span>
@@ -409,40 +437,30 @@ const App = () => {
             />
           </a>
 
-          <a
-            href="/resume"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group"
+          <button
+            onClick={() => setIsResumeModalOpen(true)}
+            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group w-full text-left cursor-pointer"
           >
             <FileText size={18} />
             <span>Resume</span>
-            <ExternalLink
+            <Download
               size={14}
               className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
             />
-          </a>
-
-          <a
-            href="/projects"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group"
-          >
-            <Briefcase size={18} />
-            <span>Projects</span>
-            <ExternalLink
-              size={14}
-              className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
-            />
-          </a>
+          </button>
 
           <a
             href="mailto:shashank.halanur@gmail.com"
-            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 p-3 rounded-lg text-sm hover:bg-sidebar-hover transition-colors group cursor-pointer"
           >
             <Mail size={18} />
             <span>Contact</span>
+            <ExternalLink
+              size={14}
+              className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
+            />
           </a>
         </div>
 
@@ -453,7 +471,7 @@ const App = () => {
           </div>
 
           {messages.length > 0 && (
-            <div className="flex items-center justify-between p-3 rounded-lg bg-sidebar-hover cursor-pointer">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-sidebar-hover cursor-pointer hover:bg-sidebar-hover/80 transition-colors">
               <div className="flex items-center gap-3">
                 <MessageSquare size={16} />
                 <span className="text-sm truncate">Current Chat</span>
@@ -632,7 +650,7 @@ const App = () => {
           onClick={() =>
             handlePromptClick("Tell me about your experience and background")
           }
-          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light"
+          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light cursor-pointer"
         >
           <div className="flex items-center gap-3 mb-2">
             <Briefcase size={20} className="text-accent-green" />
@@ -651,7 +669,7 @@ const App = () => {
               "What is your educational background and qualifications?"
             )
           }
-          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light"
+          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light cursor-pointer"
         >
           <div className="flex items-center gap-3 mb-2">
             <FileText size={20} className="text-accent-green" />
@@ -666,7 +684,7 @@ const App = () => {
           onClick={() =>
             handlePromptClick("Tell me about yourself and your interests")
           }
-          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light"
+          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light cursor-pointer"
         >
           <div className="flex items-center gap-3 mb-2">
             <User size={20} className="text-accent-green" />
@@ -678,13 +696,13 @@ const App = () => {
         </button>
 
         <button
-          onClick={() => handlePromptClick("What projects have you worked on?")}
-          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light"
+          onClick={() => handlePromptClick("What's your GitHub profile?")}
+          className="bg-bg-secondary p-6 rounded-xl text-left hover:bg-bg-tertiary transition-colors border border-border-light cursor-pointer"
         >
           <div className="flex items-center gap-3 mb-2">
             <Github size={20} className="text-accent-green" />
             <p className="font-medium text-text-primary">
-              Projects & Portfolio
+              GitHub Profile
             </p>
           </div>
           <p className="text-sm text-text-secondary">
@@ -702,13 +720,18 @@ const App = () => {
   return (
     <div className="flex h-screen bg-bg-primary font-sans" suppressHydrationWarning>
       <Sidebar />
+      <PDFViewer 
+        isOpen={isResumeModalOpen} 
+        onClose={() => setIsResumeModalOpen(false)}
+        onDownload={handleResumeDownload}
+      />
 
       <div className="flex flex-col flex-1 relative max-w-full overflow-hidden">
         {/* Header */}
         <header className="bg-bg-primary md:hidden flex items-center justify-between p-4 border-b border-border-light z-10">
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="text-text-primary p-2 hover:bg-bg-secondary rounded-lg transition-colors"
+            className="text-text-primary p-2 hover:bg-bg-secondary rounded-lg transition-colors cursor-pointer"
           >
             {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -745,7 +768,7 @@ const App = () => {
         <footer className="bg-bg-primary p-4 md:p-6 border-t border-border-light">
           <div className="max-w-4xl mx-auto">
             {/* Animated Options Row for chat mode - constrained to text area width */}
-            <AnimatedOptionsRow />
+            <AnimatedOptionsRow key="animated-options" />
             <div className="relative bg-input-bg border border-input-border rounded-2xl focus-within:border-input-focus transition-colors">
               <div className="flex items-end p-3">
               <textarea

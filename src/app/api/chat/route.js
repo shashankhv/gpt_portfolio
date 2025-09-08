@@ -53,15 +53,17 @@ export async function POST(request) {
                 return;
               }
               
-              // Filter out [DONE] markers and clean content
+              // Process chunk and filter out [DONE] markers
               const chunk = decoder.decode(value, { stream: true });
               const lines = chunk.split('\n');
+              
+              // Filter out only [DONE] markers, keep all other content
               const filteredLines = lines.filter(line => 
                 line.trim() !== '[DONE]' && 
-                !line.includes('data: [DONE]') &&
-                line.trim() !== ''
+                !line.includes('data: [DONE]')
               );
               
+              // Send the filtered content
               if (filteredLines.length > 0) {
                 controller.enqueue(new TextEncoder().encode(filteredLines.join('\n')));
               }
